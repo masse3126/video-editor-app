@@ -2,10 +2,15 @@ import { useState, useRef, useEffect } from 'react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+
+// IMPORT PLUGIN CAPACITOR
+import { Geolocation } from '@capacitor/geolocation';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+
 import 'leaflet/dist/leaflet.css';
 import './App.css';
 
-// Komponen tambahan untuk menggeser peta secara otomatis
+// Komponen untuk menggeser peta secara otomatis
 const RecenterAutomatically = ({ lat, lng }) => {
   const map = useMap();
   useEffect(() => {
@@ -35,30 +40,30 @@ function App() {
     return location ? <Marker position={[location.lat, location.lng]} /> : null;
   };
 
-  // FITUR BARU: Meminta Izin GPS Ponsel
-  const getDeviceLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Browser/Perangkat Anda tidak mendukung fitur GPS.');
-      return;
-    }
+  // FITUR LOKASI MENGGUNAKAN CAPACITOR (Native Android)
+  const getDeviceLocation = async () => {
+    try {
+      setStatus('Meminta izin lokasi perangkat...');
+      
+      // Mengecek dan meminta izin secara native
+      const permissions = await Geolocation.checkPermissions();
+      if (permissions.location !== 'granted') {
+        await Geolocation.requestPermissions();
+      }
 
-    setStatus('Meminta izin lokasi perangkat...');
-    
-    // Ini akan memunculkan pop-up izin aplikasi di ponsel!
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocation({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
-        setStatus('Lokasi perangkat berhasil didapatkan!');
-      },
-      (error) => {
-        alert('Gagal mendapatkan lokasi. Pastikan izin lokasi diaktifkan.');
-        setStatus('Gagal mengakses GPS.');
-      },
-      { enableHighAccuracy: true } // Meminta GPS akurasi tinggi
-    );
+      // Mengambil kordinat akurat
+      const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true });
+      setLocation({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      });
+      setStatus('Lokasi perangkat berhasil didapatkan!');
+      
+    } catch (error) {
+      alert('Gagal mendapatkan lokasi. Pastikan GPS aktif dan izin diberikan.');
+      setStatus('Gagal mengakses GPS.');
+      console.error(error);
+    }
   };
 
   const checkMetadata = async () => {
@@ -93,7 +98,7 @@ function App() {
     const ffmpeg = ffmpegRef.current;
     if (!ffmpeg.loaded) await ffmpeg.load();
 
-    setStatus('Memproses video... (Ini mungkin memakan waktu, harap tunggu)');
+    setStatus('Memproses video... (Harap bersabar, ini memakan waktu)');
     const inputName = 'input.mp4';
     const outputName = 'output.mp4';
 
@@ -120,14 +125,54 @@ function App() {
     await ffmpeg.exec(command);
     setStatus('Proses selesai! Menyiapkan file unduhan...');
     
+    // Mengambil hasil file dalam bentuk buffer mentah
     const data = await ffmpeg.readFile(outputName);
-    const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+    const blob = new Blob([data.buffer], { type: 'video/mp4' });
     
     const date = new Date();
-    const finalFileName = `Videos_${date.getDate()}_${date.getDay()}_${date.getFullYear()}_${date.getHours()}${date.getMinutes()}.mp4`;
+    // Menggunakan getMonth() + 1 agar bulan akurat (Jan = 1, Feb = 2, dst)
+    const finalFileName = `Videos_${date.getDate()}_${date.getMonth() + 1}_${date.getFullYear()}_${date.getHours()}${date.getMinutes()}.mp4`;
 
-    setDownloadInfo({ url, filename: finalFileName });
-    setStatus('Video berhasil disimpan di memori! Silakan klik tombol "Simpan / Download" di bawah.');
+    // Simpan blob dan nama file di state untuk diproses Capacitor
+    setDownloadInfo({ blob, filename: finalFileName });
+    setStatus('Video berhasil diproses! Silakan klik tombol Simpan di bawah.');
+  };
+
+  // FITUR PENYIMPANAN MENGGUNAKAN CAPACITOR (Native Android)
+  const saveVideoToDevice = async () => {
+    if (!downloadInfo) return;
+    try {
+      setStatus('Sedang menyimpan file ke Dokumen HP...');
+      
+      // Capacitor Filesystem membutuhkan data dalam bentuk Base64
+      // Kita gunakan FileReader untuk mengubah file video secara aman
+      const reader = new FileReader();
+      reader.readAsDataURL(downloadInfo.blob);
+      
+      reader.onloadend = async () => {
+        const base64Data = reader.result.split(',')[1];
+
+        // Menyimpan file secara native ke folder Documents HP
+        await Filesystem.writeFile({
+          path: downloadInfo.filename,
+          data: base64Data,
+          directory: Directory.Documents,
+        });
+
+        alert(`Sukses! Video berhasil disimpan di folder Documents / Dokumen HP Anda dengan nama: ${downloadInfo.filename}`);
+        setStatus('Video berhasil disimpan di memori HP!');
+      };
+
+      reader.onerror = () => {
+        alert('Terjadi kesalahan saat membaca file.');
+        setStatus('Gagal memproses file.');
+      };
+
+    } catch (error) {
+      console.error(error);
+      alert('Gagal menyimpan file. Pastikan izin penyimpanan telah diberikan.');
+      setStatus('Gagal menyimpan file.');
+    }
   };
 
   return (
@@ -164,7 +209,6 @@ function App() {
       <div style={{ marginBottom: '15px' }}>
         <label><b>2. Pilih Lokasi (GPS):</b></label><br/>
         
-        {/* Tombol Peminta Izin */}
         <button onClick={getDeviceLocation} style={{ marginBottom: '10px', padding: '8px 12px', backgroundColor: '#17a2b8', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
           📍 Gunakan Lokasi Ponsel Saya
         </button>
@@ -209,15 +253,14 @@ function App() {
         Status: {status}
       </p>
 
-      {/* TOMBOL DOWNLOAD */}
+      {/* TOMBOL PENYIMPANAN NATIVE */}
       {downloadInfo && (
-        <a 
-          href={downloadInfo.url} 
-          download={downloadInfo.filename}
-          style={{ display: 'block', textAlign: 'center', marginTop: '15px', padding: '15px', width: '100%', boxSizing: 'border-box', backgroundColor: '#28a745', color: 'white', textDecoration: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold' }}
+        <button 
+          onClick={saveVideoToDevice}
+          style={{ padding: '15px', width: '100%', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
         >
-          ⬇️ Simpan / Download Hasil Video
-        </a>
+          ⬇️ Simpan Video ke Dokumen HP
+        </button>
       )}
 
     </div>
