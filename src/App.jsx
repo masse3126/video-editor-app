@@ -45,13 +45,11 @@ function App() {
     try {
       setStatus('Meminta izin lokasi perangkat...');
       
-      // Mengecek dan meminta izin secara native
       const permissions = await Geolocation.checkPermissions();
       if (permissions.location !== 'granted') {
         await Geolocation.requestPermissions();
       }
 
-      // Mengambil kordinat akurat
       const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true });
       setLocation({
         lat: position.coords.latitude,
@@ -125,34 +123,42 @@ function App() {
     await ffmpeg.exec(command);
     setStatus('Proses selesai! Menyiapkan file unduhan...');
     
-    // Mengambil hasil file dalam bentuk buffer mentah
     const data = await ffmpeg.readFile(outputName);
     const blob = new Blob([data.buffer], { type: 'video/mp4' });
     
     const date = new Date();
-    // Menggunakan getMonth() + 1 agar bulan akurat (Jan = 1, Feb = 2, dst)
     const finalFileName = `Videos_${date.getDate()}_${date.getMonth() + 1}_${date.getFullYear()}_${date.getHours()}${date.getMinutes()}.mp4`;
 
-    // Simpan blob dan nama file di state untuk diproses Capacitor
     setDownloadInfo({ blob, filename: finalFileName });
     setStatus('Video berhasil diproses! Silakan klik tombol Simpan di bawah.');
   };
 
-  // FITUR PENYIMPANAN MENGGUNAKAN CAPACITOR (Native Android)
+  // FITUR PENYIMPANAN YANG SUDAH DIPERBAIKI (Minta Izin Pop-Up)
   const saveVideoToDevice = async () => {
     if (!downloadInfo) return;
     try {
+      setStatus('Memeriksa izin penyimpanan...');
+      
+      // 1. Memanggil Pop-Up Izin Penyimpanan
+      const permissions = await Filesystem.checkPermissions();
+      if (permissions.publicStorage !== 'granted') {
+        const request = await Filesystem.requestPermissions();
+        if (request.publicStorage !== 'granted') {
+          alert('Izin penyimpanan ditolak! Aplikasi tidak bisa menyimpan video.');
+          setStatus('Gagal: Izin penyimpanan tidak diberikan.');
+          return;
+        }
+      }
+
       setStatus('Sedang menyimpan file ke Dokumen HP...');
       
-      // Capacitor Filesystem membutuhkan data dalam bentuk Base64
-      // Kita gunakan FileReader untuk mengubah file video secara aman
       const reader = new FileReader();
       reader.readAsDataURL(downloadInfo.blob);
       
       reader.onloadend = async () => {
         const base64Data = reader.result.split(',')[1];
 
-        // Menyimpan file secara native ke folder Documents HP
+        // 2. Menyimpan File ke direktori Documents
         await Filesystem.writeFile({
           path: downloadInfo.filename,
           data: base64Data,
@@ -170,7 +176,7 @@ function App() {
 
     } catch (error) {
       console.error(error);
-      alert('Gagal menyimpan file. Pastikan izin penyimpanan telah diberikan.');
+      alert('Terjadi kesalahan sistem saat menyimpan file: ' + error.message);
       setStatus('Gagal menyimpan file.');
     }
   };
