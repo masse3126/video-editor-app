@@ -1,74 +1,74 @@
-import { useState, useEffect } from 'react'; //
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'; //[cite: 1]
+import { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 
 // IMPORT PLUGIN CAPACITOR
-import { Geolocation } from '@capacitor/geolocation'; //[cite: 1]
-import { Filesystem, Directory } from '@capacitor/filesystem'; //[cite: 1]
+import { Geolocation } from '@capacitor/geolocation';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
-import 'leaflet/dist/leaflet.css'; //[cite: 1]
-import './App.css'; //[cite: 1]
+import 'leaflet/dist/leaflet.css';
+import './App.css';
 
-const RecenterAutomatically = ({ lat, lng }) => { //[cite: 1]
-  const map = useMap(); //[cite: 1]
-  useEffect(() => { //[cite: 1]
-    map.setView([lat, lng]); //[cite: 1]
-  }, [lat, lng, map]); //[cite: 1]
-  return null; //[cite: 1]
+const RecenterAutomatically = ({ lat, lng }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView([lat, lng]);
+  }, [lat, lng, map]);
+  return null;
 }
 
-function App() { //[cite: 1]
-  const [videoFile, setVideoFile] = useState(null); //[cite: 1]
-  const [status, setStatus] = useState('Pilih video untuk memulai'); //[cite: 1]
-  const [audioScale, setAudioScale] = useState('0'); //[cite: 1]
-  const [deviceModel, setDeviceModel] = useState('Samsung Galaxy S26 Ultra'); //[cite: 1]
-  const [location, setLocation] = useState({ lat: -0.7893, lng: 113.9213 }); //[cite: 1]
+function App() {
+  const [videoFile, setVideoFile] = useState(null);
+  const [status, setStatus] = useState('Pilih video untuk memulai');
+  const [audioScale, setAudioScale] = useState('0');
+  const [deviceModel, setDeviceModel] = useState('Samsung Galaxy S26 Ultra');
+  const [location, setLocation] = useState({ lat: -0.7893, lng: 113.9213 });
   
-  const [progress, setProgress] = useState(0); //[cite: 1]
-  const [downloadInfo, setDownloadInfo] = useState(null); //[cite: 1]
+  const [progress, setProgress] = useState(0);
+  const [downloadInfo, setDownloadInfo] = useState(null);
 
   // Otomatis minta izin saat aplikasi pertama dibuka
-  useEffect(() => { //[cite: 1]
-    const requestStartupPermissions = async () => { //[cite: 1]
-      try { //[cite: 1]
-        await Geolocation.requestPermissions(); //[cite: 1]
-        await Filesystem.requestPermissions(); //[cite: 1]
-      } catch (e) { //[cite: 1]
-        console.log('Izin startup dilewati/ditolak:', e); //[cite: 1]
-      } //[cite: 1]
-    }; //[cite: 1]
-    requestStartupPermissions(); //[cite: 1]
-  }, []); //[cite: 1]
+  useEffect(() => {
+    const requestStartupPermissions = async () => {
+      try {
+        await Geolocation.requestPermissions();
+        await Filesystem.requestPermissions();
+      } catch (e) {
+        console.log('Izin startup dilewati/ditolak:', e);
+      }
+    };
+    requestStartupPermissions();
+  }, []);
 
-  const LocationPicker = () => { //[cite: 1]
-    useMapEvents({ //[cite: 1]
-      click(e) { //[cite: 1]
-        setLocation({ lat: e.latlng.lat, lng: e.latlng.lng }); //[cite: 1]
-      }, //[cite: 1]
-    }); //[cite: 1]
-    return location ? <Marker position={[location.lat, location.lng]} /> : null; //[cite: 1]
-  }; //[cite: 1]
+  const LocationPicker = () => {
+    useMapEvents({
+      click(e) {
+        setLocation({ lat: e.latlng.lat, lng: e.latlng.lng });
+      },
+    });
+    return location ? <Marker position={[location.lat, location.lng]} /> : null;
+  };
 
-  const getDeviceLocation = async () => { //[cite: 1]
-    try { //[cite: 1]
-      setStatus('Mengambil lokasi perangkat...'); //[cite: 1]
-      const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true }); //[cite: 1]
-      setLocation({ //[cite: 1]
-        lat: position.coords.latitude, //[cite: 1]
-        lng: position.coords.longitude //[cite: 1]
-      }); //[cite: 1]
-      setStatus('Lokasi perangkat berhasil didapatkan!'); //[cite: 1]
-    } catch (error) { //[cite: 1]
-      alert('Gagal mendapatkan lokasi. Pastikan GPS aktif.'); //[cite: 1]
-      setStatus('Gagal mengakses GPS.'); //[cite: 1]
-    } //[cite: 1]
-  }; //[cite: 1]
+  const getDeviceLocation = async () => {
+    try {
+      setStatus('Mengambil lokasi perangkat...');
+      const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true });
+      setLocation({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      });
+      setStatus('Lokasi perangkat berhasil didapatkan!');
+    } catch (error) {
+      alert('Gagal mendapatkan lokasi. Pastikan GPS aktif.');
+      setStatus('Gagal mengakses GPS.');
+    }
+  };
 
   const processVideoOnServer = async () => {
-    if (!videoFile) return alert('Pilih video dulu!'); //[cite: 1]
+    if (!videoFile) return alert('Pilih video dulu!');
     
-    setStatus('Mengunggah video ke komputer...');
+    setStatus('Mengunggah video ke server PC...');
     setProgress(25);
-    setDownloadInfo(null); //[cite: 1]
+    setDownloadInfo(null);
 
     const formData = new FormData();
     formData.append('video', videoFile);
@@ -78,101 +78,104 @@ function App() { //[cite: 1]
     formData.append('deviceModel', deviceModel);
 
     try {
-      // IP Komputermu sudah dimasukkan ke sini
-      const SERVER_URL = 'http://192.168.235.20:3000/process-video'; 
+      // Tautan Publik Localtunnel
+      const SERVER_URL = 'https://cold-mirrors-join.loca.lt/process-video'; 
       
       const response = await fetch(SERVER_URL, {
         method: 'POST',
+        headers: {
+          'bypass-tunnel-reminder': 'true'
+        },
         body: formData,
       });
 
-      if (!response.ok) throw new Error("Server gagal memproses");
+      if (!response.ok) throw new Error("Server gagal memproses video");
 
       setProgress(75);
-      setStatus('Proses selesai! Mengunduh hasil dari komputer...');
+      setStatus('Proses selesai! Mengunduh hasil dari PC...');
 
       const blob = await response.blob();
-      const date = new Date(); //[cite: 1]
-      const finalFileName = `Videos_${date.getDate()}_${date.getMonth() + 1}_${date.getFullYear()}_${date.getHours()}${date.getMinutes()}.mp4`; //[cite: 1]
+      const date = new Date();
+      const finalFileName = `Videos_${date.getDate()}_${date.getMonth() + 1}_${date.getFullYear()}_${date.getHours()}${date.getMinutes()}.mp4`;
 
-      setDownloadInfo({ blob, filename: finalFileName }); //[cite: 1]
-      setProgress(100); //[cite: 1]
-      setStatus('Berhasil! Silakan klik tombol Simpan di bawah.'); //[cite: 1]
+      setDownloadInfo({ blob, filename: finalFileName });
+      setProgress(100);
+      setStatus('Berhasil! Silakan klik tombol Simpan di bawah.');
 
     } catch (error) {
       console.error(error);
-      setStatus('Proses Gagal! Pastikan IP benar dan Komputer menyala.');
+      setStatus('Proses Gagal! Pastikan server localtunnel di PC masih menyala.');
       setProgress(0);
     }
   };
 
-  const blobToBase64 = (blob) => { //[cite: 1]
-    return new Promise((resolve, reject) => { //[cite: 1]
-      const reader = new FileReader(); //[cite: 1]
-      reader.onloadend = () => { //[cite: 1]
-        if (typeof reader.result === 'string') { //[cite: 1]
-          resolve(reader.result.split(',')[1]); //[cite: 1]
-        } else { //[cite: 1]
-          reject(new Error("Format data tidak valid.")); //[cite: 1]
-        } //[cite: 1]
-      }; //[cite: 1]
-      reader.onerror = (err) => reject(err); //[cite: 1]
-      reader.readAsDataURL(blob); //[cite: 1]
-    }); //[cite: 1]
-  }; //[cite: 1]
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result.split(',')[1]);
+        } else {
+          reject(new Error("Format data tidak valid."));
+        }
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(blob);
+    });
+  };
 
-  const saveVideoToDevice = async () => { //[cite: 1]
-    if (!downloadInfo || !downloadInfo.blob) { //[cite: 1]
-      return alert('File video belum siap atau gagal diproses!'); //[cite: 1]
-    } //[cite: 1]
+  const saveVideoToDevice = async () => {
+    if (!downloadInfo || !downloadInfo.blob) {
+      return alert('File video belum siap atau gagal diproses!');
+    }
 
-    try { //[cite: 1]
-      setStatus('Meminta izin akses penyimpanan...'); //[cite: 1]
-      const permissionCheck = await Filesystem.checkPermissions(); //[cite: 1]
-      if (permissionCheck.publicStorage !== 'granted') { //[cite: 1]
-        const req = await Filesystem.requestPermissions(); //[cite: 1]
-        if (req.publicStorage !== 'granted') { //[cite: 1]
-          alert('Izin penyimpanan ditolak!'); //[cite: 1]
-          setStatus('Penyimpanan dibatalkan.'); //[cite: 1]
-          return; //[cite: 1]
-        } //[cite: 1]
-      } //[cite: 1]
+    try {
+      setStatus('Meminta izin akses penyimpanan...');
+      const permissionCheck = await Filesystem.checkPermissions();
+      if (permissionCheck.publicStorage !== 'granted') {
+        const req = await Filesystem.requestPermissions();
+        if (req.publicStorage !== 'granted') {
+          alert('Izin penyimpanan ditolak!');
+          setStatus('Penyimpanan dibatalkan.');
+          return;
+        }
+      }
 
-      setStatus('Mengonversi file video...'); //[cite: 1]
-      const base64Data = await blobToBase64(downloadInfo.blob); //[cite: 1]
+      setStatus('Mengonversi file video...');
+      const base64Data = await blobToBase64(downloadInfo.blob);
 
-      setStatus('Menyimpan file ke Penyimpanan...'); //[cite: 1]
+      setStatus('Menyimpan file ke Penyimpanan...');
       
-      await Filesystem.writeFile({ //[cite: 1]
-        path: downloadInfo.filename, //[cite: 1]
-        data: base64Data, //[cite: 1]
-        directory: Directory.Documents, //[cite: 1]
-        recursive: true //[cite: 1]
-      }); //[cite: 1]
+      await Filesystem.writeFile({
+        path: downloadInfo.filename,
+        data: base64Data,
+        directory: Directory.Documents,
+        recursive: true
+      });
 
-      alert(`BERHASIL! Video tersimpan di folder Documents HP Anda dengan nama: ${downloadInfo.filename}`); //[cite: 1]
-      setStatus('Video berhasil disimpan ke HP!'); //[cite: 1]
+      alert(`BERHASIL! Video tersimpan di folder Documents HP Anda dengan nama: ${downloadInfo.filename}`);
+      setStatus('Video berhasil disimpan ke HP!');
 
-    } catch (error) { //[cite: 1]
-      console.error(error); //[cite: 1]
-      alert('GAGAL MENYIMPAN: ' + error.message); //[cite: 1]
-      setStatus('Gagal menyimpan file.'); //[cite: 1]
-    } //[cite: 1]
-  }; //[cite: 1]
+    } catch (error) {
+      console.error(error);
+      alert('GAGAL MENYIMPAN: ' + error.message);
+      setStatus('Gagal menyimpan file.');
+    }
+  };
 
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '600px', margin: 'auto' }}>
-      <h2>🛠️ Metadata Video Editor (Server Mode)</h2>
+      <h2>🛠️ Metadata Video Editor (Online Server)</h2>
       
       <div style={{ marginBottom: '15px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}>
         <label><b>1. Pilih Video:</b></label><br/><br/>
         <input 
           type="file" 
           accept="video/mp4" 
-          onChange={(e) => { //[cite: 1]
-            setVideoFile(e.target.files[0]); //[cite: 1]
-            setDownloadInfo(null); //[cite: 1]
-            setProgress(0); //[cite: 1]
+          onChange={(e) => {
+            setVideoFile(e.target.files[0]);
+            setDownloadInfo(null);
+            setProgress(0);
           }} 
         />
       </div>
@@ -215,7 +218,7 @@ function App() { //[cite: 1]
       </div>
 
       <button onClick={processVideoOnServer} style={{ padding: '15px', width: '100%', backgroundColor: '#007BFF', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
-        ⚙️ Kirim ke PC & Proses
+        ⚙️ Kirim ke Server PC & Proses
       </button>
 
       <div style={{ marginTop: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f8f9fa' }}>
@@ -231,17 +234,17 @@ function App() { //[cite: 1]
         </p>
       </div>
 
-      {downloadInfo && ( //[cite: 1]
+      {downloadInfo && (
         <button 
-          onClick={saveVideoToDevice} //[cite: 1]
-          style={{ marginTop: '15px', padding: '15px', width: '100%', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }} //[cite: 1]
+          onClick={saveVideoToDevice}
+          style={{ marginTop: '15px', padding: '15px', width: '100%', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
         >
           ⬇️ Simpan Video ke HP
-        </button> //[cite: 1]
+        </button>
       )}
 
     </div>
-  ); //[cite: 1]
-} //[cite: 1]
+  );
+}
 
-export default App; //[cite: 1]
+export default App;
