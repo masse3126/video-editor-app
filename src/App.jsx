@@ -23,6 +23,9 @@ function App() {
   const [deviceModel, setDeviceModel] = useState('Samsung Galaxy S26 Ultra');
   const [location, setLocation] = useState({ lat: -0.7893, lng: 113.9213 });
   
+  // State baru untuk menyimpan URL server yang diketik user
+  const [serverUrl, setServerUrl] = useState('https://'); 
+  
   const [progress, setProgress] = useState(0);
   const [downloadInfo, setDownloadInfo] = useState(null);
 
@@ -65,6 +68,7 @@ function App() {
 
   const processVideoOnServer = async () => {
     if (!videoFile) return alert('Pilih video dulu!');
+    if (!serverUrl || serverUrl === 'https://') return alert('Masukkan URL Server PC terlebih dahulu!');
     
     setStatus('Mengunggah video ke server PC...');
     setProgress(25);
@@ -78,10 +82,10 @@ function App() {
     formData.append('deviceModel', deviceModel);
 
     try {
-      // Tautan Publik Localtunnel
-      const SERVER_URL = 'https://cold-mirrors-join.loca.lt/process-video'; 
+      // Menggunakan URL yang diketik langsung dari interface aplikasi
+      const targetUrl = serverUrl.endsWith('/') ? `${serverUrl}process-video` : `${serverUrl}/process-video`;
       
-      const response = await fetch(SERVER_URL, {
+      const response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'bypass-tunnel-reminder': 'true'
@@ -104,7 +108,7 @@ function App() {
 
     } catch (error) {
       console.error(error);
-      setStatus('Proses Gagal! Pastikan server localtunnel di PC masih menyala.');
+      setStatus('Proses Gagal! Periksa URL Server atau pastikan PC menyala.');
       setProgress(0);
     }
   };
@@ -165,8 +169,21 @@ function App() {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '600px', margin: 'auto' }}>
-      <h2>🛠️ Metadata Video Editor (Online Server)</h2>
+      <h2>🛠️ Metadata Video Editor</h2>
       
+      {/* KOTAK INPUT URL SERVER DI INTERFACE */}
+      <div style={{ marginBottom: '15px', padding: '12px', border: '1px solid #007BFF', borderRadius: '8px', backgroundColor: '#e7f1ff' }}>
+        <label><b>🔗 URL Server PC (Localtunnel):</b></label><br/>
+        <input 
+          type="text" 
+          placeholder="Contoh: https://xxxx.loca.lt" 
+          value={serverUrl} 
+          onChange={(e) => setServerUrl(e.target.value)}
+          style={{ width: '100%', padding: '8px', marginTop: '5px', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc' }}
+        />
+        <small style={{ color: '#555' }}>Tempel link localtunnel terbaru di sini setiap kali menyalakan PC.</small>
+      </div>
+
       <div style={{ marginBottom: '15px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}>
         <label><b>1. Pilih Video:</b></label><br/><br/>
         <input 
