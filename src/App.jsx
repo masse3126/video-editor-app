@@ -22,7 +22,7 @@ function App() {
   const [videoFile, setVideoFile] = useState(null);
   const [status, setStatus] = useState('Pilih video untuk memulai');
   const [audioScale, setAudioScale] = useState('0');
-  const [deviceModel, setDeviceModel] = useState('iPhone 15 Pro Max');
+  const [deviceModel, setDeviceModel] = useState('Samsung Galaxy S26 Ultra');
   const [location, setLocation] = useState({ lat: -0.7893, lng: 113.9213 });
   
   const [progress, setProgress] = useState(0);
@@ -118,7 +118,6 @@ function App() {
 
     await ffmpeg.writeFile(inputName, await fetchFile(videoFile));
 
-    // PERBAIKAN FATAL: Menghapus tanda petik ganda ekstra pada filter FFmpeg
     let filterString = '';
     if (audioScale === '1') filterString = 'chorus=0.5:0.9:50|60:0.4|0.32:0.25|0.4:2|2.3';
     if (audioScale === '2') filterString = 'vibrato=f=7.0:d=0.5, volume=1.5';
@@ -132,6 +131,8 @@ function App() {
       '-metadata', `location-eng=${location.lat}${location.lng > 0 ? '+' : ''}${location.lng}`,
       '-metadata', `model=${deviceModel}`,
       '-metadata', `make=${deviceModel.split(' ')[0]}`,
+      '-metadata:s:v', `model=${deviceModel}`,
+      '-metadata:s:v', `make=${deviceModel.split(' ')[0]}`,
     ];
 
     if (audioScale !== '0' && filterString !== '') {
@@ -180,7 +181,6 @@ function App() {
     });
   };
 
-  // PERBAIKAN: Penyimpanan native ke dokumen/DCIM perangkat
   const saveVideoToDevice = async () => {
     if (!downloadInfo || !downloadInfo.blob) {
       return alert('File video belum siap atau gagal diproses!');
@@ -203,7 +203,6 @@ function App() {
 
       setStatus('Menyimpan file ke Penyimpanan...');
       
-      // Menggunakan Directory.Documents untuk kompatibilitas penuh Android
       await Filesystem.writeFile({
         path: downloadInfo.filename,
         data: base64Data,
@@ -278,12 +277,23 @@ function App() {
           </select>
         </div>
         <div style={{ flex: 1 }}>
-          <label><b>4. Perangkat:</b></label>
+          <label><b>4. Perangkat (Model 2026):</b></label>
           <select value={deviceModel} onChange={(e) => setDeviceModel(e.target.value)} style={{ padding: '8px', width: '100%', marginTop: '5px' }}>
-            <option value="iPhone 15 Pro Max">iPhone 15 Pro Max</option>
-            <option value="iPhone 14 Pro">iPhone 14 Pro</option>
-            <option value="Samsung Galaxy S24 Ultra">S24 Ultra</option>
-            <option value="Xiaomi 14 Pro">Xiaomi 14 Pro</option>
+            <option value="Samsung Galaxy S26 Ultra">Samsung Galaxy S26 Ultra</option>
+            <option value="Samsung Galaxy S26+">Samsung Galaxy S26+</option>
+            <option value="Samsung Galaxy S26">Samsung Galaxy S26</option>
+            <option value="Xiaomi 17 Ultra">Xiaomi 17 Ultra</option>
+            <option value="Xiaomi 17T">Xiaomi 17T</option>
+            <option value="OPPO Find X9 Pro">OPPO Find X9 Pro</option>
+            <option value="OPPO Reno 15 Pro Max">OPPO Reno 15 Pro Max</option>
+            <option value="OPPO Reno 15 5G">OPPO Reno 15 5G</option>
+            <option value="Vivo V80">Vivo V80</option>
+            <option value="Tecno Camon 30 Pro 5G">Tecno Camon 30 Pro 5G</option>
+            <option value="Redmi Turbo 5">Redmi Turbo 5</option>
+            <option value="Samsung Galaxy A57 5G">Samsung Galaxy A57 5G</option>
+            <option value="Samsung Galaxy Z Fold8 Ultra">Samsung Galaxy Z Fold8 Ultra</option>
+            <option value="Samsung Galaxy Z Flip8">Samsung Galaxy Z Flip8</option>
+            <option value="OnePlus 15s">OnePlus 15s</option>
           </select>
         </div>
       </div>
