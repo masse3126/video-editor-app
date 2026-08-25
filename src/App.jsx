@@ -1,254 +1,180 @@
-import { useState, useRef, useEffect } from 'react';
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile } from '@ffmpeg/util';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import { useState, useEffect } from 'react'; //
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'; //[cite: 1]
 
 // IMPORT PLUGIN CAPACITOR
-import { Geolocation } from '@capacitor/geolocation';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Geolocation } from '@capacitor/geolocation'; //[cite: 1]
+import { Filesystem, Directory } from '@capacitor/filesystem'; //[cite: 1]
 
-import 'leaflet/dist/leaflet.css';
-import './App.css';
+import 'leaflet/dist/leaflet.css'; //[cite: 1]
+import './App.css'; //[cite: 1]
 
-const RecenterAutomatically = ({ lat, lng }) => {
-  const map = useMap();
-  useEffect(() => {
-    map.setView([lat, lng]);
-  }, [lat, lng, map]);
-  return null;
+const RecenterAutomatically = ({ lat, lng }) => { //[cite: 1]
+  const map = useMap(); //[cite: 1]
+  useEffect(() => { //[cite: 1]
+    map.setView([lat, lng]); //[cite: 1]
+  }, [lat, lng, map]); //[cite: 1]
+  return null; //[cite: 1]
 }
 
-function App() {
-  const [videoFile, setVideoFile] = useState(null);
-  const [status, setStatus] = useState('Pilih video untuk memulai');
-  const [audioScale, setAudioScale] = useState('0');
-  const [deviceModel, setDeviceModel] = useState('Samsung Galaxy S26 Ultra');
-  const [location, setLocation] = useState({ lat: -0.7893, lng: 113.9213 });
+function App() { //[cite: 1]
+  const [videoFile, setVideoFile] = useState(null); //[cite: 1]
+  const [status, setStatus] = useState('Pilih video untuk memulai'); //[cite: 1]
+  const [audioScale, setAudioScale] = useState('0'); //[cite: 1]
+  const [deviceModel, setDeviceModel] = useState('Samsung Galaxy S26 Ultra'); //[cite: 1]
+  const [location, setLocation] = useState({ lat: -0.7893, lng: 113.9213 }); //[cite: 1]
   
-  const [progress, setProgress] = useState(0);
-  const [processLogs, setProcessLogs] = useState([]);
-  
-  const [originalMetadata, setOriginalMetadata] = useState('');
-  const [downloadInfo, setDownloadInfo] = useState(null);
-  
-  const ffmpegRef = useRef(new FFmpeg());
+  const [progress, setProgress] = useState(0); //[cite: 1]
+  const [downloadInfo, setDownloadInfo] = useState(null); //[cite: 1]
 
   // Otomatis minta izin saat aplikasi pertama dibuka
-  useEffect(() => {
-    const requestStartupPermissions = async () => {
-      try {
-        await Geolocation.requestPermissions();
-        await Filesystem.requestPermissions();
-      } catch (e) {
-        console.log('Izin startup dilewati/ditolak:', e);
-      }
-    };
-    requestStartupPermissions();
-  }, []);
+  useEffect(() => { //[cite: 1]
+    const requestStartupPermissions = async () => { //[cite: 1]
+      try { //[cite: 1]
+        await Geolocation.requestPermissions(); //[cite: 1]
+        await Filesystem.requestPermissions(); //[cite: 1]
+      } catch (e) { //[cite: 1]
+        console.log('Izin startup dilewati/ditolak:', e); //[cite: 1]
+      } //[cite: 1]
+    }; //[cite: 1]
+    requestStartupPermissions(); //[cite: 1]
+  }, []); //[cite: 1]
 
-  const LocationPicker = () => {
-    useMapEvents({
-      click(e) {
-        setLocation({ lat: e.latlng.lat, lng: e.latlng.lng });
-      },
-    });
-    return location ? <Marker position={[location.lat, location.lng]} /> : null;
-  };
+  const LocationPicker = () => { //[cite: 1]
+    useMapEvents({ //[cite: 1]
+      click(e) { //[cite: 1]
+        setLocation({ lat: e.latlng.lat, lng: e.latlng.lng }); //[cite: 1]
+      }, //[cite: 1]
+    }); //[cite: 1]
+    return location ? <Marker position={[location.lat, location.lng]} /> : null; //[cite: 1]
+  }; //[cite: 1]
 
-  const getDeviceLocation = async () => {
-    try {
-      setStatus('Mengambil lokasi perangkat...');
-      const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true });
-      setLocation({
-        lat: position.coords.latitude,
-        lng: position.coords.longitude
-      });
-      setStatus('Lokasi perangkat berhasil didapatkan!');
-    } catch (error) {
-      alert('Gagal mendapatkan lokasi. Pastikan GPS aktif.');
-      setStatus('Gagal mengakses GPS.');
-    }
-  };
+  const getDeviceLocation = async () => { //[cite: 1]
+    try { //[cite: 1]
+      setStatus('Mengambil lokasi perangkat...'); //[cite: 1]
+      const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true }); //[cite: 1]
+      setLocation({ //[cite: 1]
+        lat: position.coords.latitude, //[cite: 1]
+        lng: position.coords.longitude //[cite: 1]
+      }); //[cite: 1]
+      setStatus('Lokasi perangkat berhasil didapatkan!'); //[cite: 1]
+    } catch (error) { //[cite: 1]
+      alert('Gagal mendapatkan lokasi. Pastikan GPS aktif.'); //[cite: 1]
+      setStatus('Gagal mengakses GPS.'); //[cite: 1]
+    } //[cite: 1]
+  }; //[cite: 1]
 
-  const checkMetadata = async () => {
-    if (!videoFile) return alert('Pilih video dulu!');
+  const processVideoOnServer = async () => {
+    if (!videoFile) return alert('Pilih video dulu!'); //[cite: 1]
     
-    setStatus('Mengekstrak metadata...');
-    setOriginalMetadata('Sedang memuat data...');
-    
-    const ffmpeg = ffmpegRef.current;
-    if (!ffmpeg.loaded) await ffmpeg.load();
+    setStatus('Mengunggah video ke komputer...');
+    setProgress(25);
+    setDownloadInfo(null); //[cite: 1]
 
-    const inputName = 'check_input.mp4';
-    await ffmpeg.writeFile(inputName, await fetchFile(videoFile));
-
-    let logs = [];
-    const logCb = ({ message }) => logs.push(message);
-
-    ffmpeg.on('log', logCb);
-    await ffmpeg.exec(['-i', inputName]);
-    ffmpeg.off('log', logCb);
-
-    setOriginalMetadata(logs.join('\n') || 'Metadata tidak ditemukan.');
-    setStatus('Selesai mengekstrak metadata!');
-  };
-
-  const processVideo = async () => {
-    if (!videoFile) return alert('Pilih video dulu!');
-    
-    setProgress(0);
-    setProcessLogs([]);
-    setDownloadInfo(null);
-    setStatus('Memuat mesin pemroses (FFmpeg)...');
-    
-    const ffmpeg = ffmpegRef.current;
-    if (!ffmpeg.loaded) await ffmpeg.load();
-
-    ffmpeg.on('progress', ({ progress }) => {
-      setProgress(Math.round(progress * 100));
-    });
-    
-    ffmpeg.on('log', ({ message }) => {
-      setProcessLogs((prevLogs) => [...prevLogs, message]);
-    });
-
-    setStatus('Memproses video & injeksi metadata...');
-    const inputName = 'input.mp4';
-    const outputName = 'output.mp4';
-
-    await ffmpeg.writeFile(inputName, await fetchFile(videoFile));
-
-    let filterString = '';
-    if (audioScale === '1') filterString = 'chorus=0.5:0.9:50|60:0.4|0.32:0.25|0.4:2|2.3';
-    if (audioScale === '2') filterString = 'vibrato=f=7.0:d=0.5, volume=1.5';
-    if (audioScale === '3') filterString = 'acrusher=level_in=8:level_out=18:bits=8:mode=log, volume=2.0';
-    if (audioScale === '4') filterString = 'aecho=0.8:0.88:60:0.4, acrusher=level_in=8:level_out=18:bits=4:mode=log, volume=3.0';
-
-    const command = [
-      '-i', inputName,
-      '-metadata', `creation_time=now`,
-      '-metadata', `location=${location.lat}${location.lng > 0 ? '+' : ''}${location.lng}`,
-      '-metadata', `location-eng=${location.lat}${location.lng > 0 ? '+' : ''}${location.lng}`,
-      '-metadata', `model=${deviceModel}`,
-      '-metadata', `make=${deviceModel.split(' ')[0]}`,
-      '-metadata:s:v', `model=${deviceModel}`,
-      '-metadata:s:v', `make=${deviceModel.split(' ')[0]}`,
-    ];
-
-    if (audioScale !== '0' && filterString !== '') {
-      command.push('-af', filterString);
-    }
-
-    command.push(outputName);
+    const formData = new FormData();
+    formData.append('video', videoFile);
+    formData.append('audioScale', audioScale);
+    formData.append('lat', location.lat);
+    formData.append('lng', location.lng);
+    formData.append('deviceModel', deviceModel);
 
     try {
-      await ffmpeg.exec(command);
-      setStatus('Proses video selesai! Menyiapkan file...');
+      // IP Komputermu sudah dimasukkan ke sini
+      const SERVER_URL = 'http://192.168.235.20:3000/process-video'; 
       
-      const data = await ffmpeg.readFile(outputName);
-      if (!data || data.length === 0) {
-        throw new Error("File hasil olahan FFmpeg kosong.");
-      }
-
-      const blob = new Blob([data.buffer], { type: 'video/mp4' });
-      
-      const date = new Date();
-      const finalFileName = `Videos_${date.getDate()}_${date.getMonth() + 1}_${date.getFullYear()}_${date.getHours()}${date.getMinutes()}.mp4`;
-
-      setDownloadInfo({ blob, filename: finalFileName });
-      setStatus('Berhasil! Silakan klik tombol Simpan di bawah.');
-    } catch (error) {
-      setProcessLogs(prev => [...prev, `ERROR FATAL: ${error.message}`]);
-      setStatus('Proses Gagal! Periksa Log.');
-    } finally {
-      ffmpeg.off('progress');
-      ffmpeg.off('log');
-    }
-  };
-
-  const blobToBase64 = (blob) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          resolve(reader.result.split(',')[1]);
-        } else {
-          reject(new Error("Format data tidak valid."));
-        }
-      };
-      reader.onerror = (err) => reject(err);
-      reader.readAsDataURL(blob);
-    });
-  };
-
-  const saveVideoToDevice = async () => {
-    if (!downloadInfo || !downloadInfo.blob) {
-      return alert('File video belum siap atau gagal diproses!');
-    }
-
-    try {
-      setStatus('Meminta izin akses penyimpanan...');
-      const permissionCheck = await Filesystem.checkPermissions();
-      if (permissionCheck.publicStorage !== 'granted') {
-        const req = await Filesystem.requestPermissions();
-        if (req.publicStorage !== 'granted') {
-          alert('Izin penyimpanan ditolak!');
-          setStatus('Penyimpanan dibatalkan.');
-          return;
-        }
-      }
-
-      setStatus('Mengonversi file video...');
-      const base64Data = await blobToBase64(downloadInfo.blob);
-
-      setStatus('Menyimpan file ke Penyimpanan...');
-      
-      await Filesystem.writeFile({
-        path: downloadInfo.filename,
-        data: base64Data,
-        directory: Directory.Documents,
-        recursive: true
+      const response = await fetch(SERVER_URL, {
+        method: 'POST',
+        body: formData,
       });
 
-      alert(`BERHASIL! Video tersimpan di folder Documents HP Anda dengan nama: ${downloadInfo.filename}`);
-      setStatus('Video berhasil disimpan ke HP!');
+      if (!response.ok) throw new Error("Server gagal memproses");
+
+      setProgress(75);
+      setStatus('Proses selesai! Mengunduh hasil dari komputer...');
+
+      const blob = await response.blob();
+      const date = new Date(); //[cite: 1]
+      const finalFileName = `Videos_${date.getDate()}_${date.getMonth() + 1}_${date.getFullYear()}_${date.getHours()}${date.getMinutes()}.mp4`; //[cite: 1]
+
+      setDownloadInfo({ blob, filename: finalFileName }); //[cite: 1]
+      setProgress(100); //[cite: 1]
+      setStatus('Berhasil! Silakan klik tombol Simpan di bawah.'); //[cite: 1]
 
     } catch (error) {
       console.error(error);
-      alert('GAGAL MENYIMPAN: ' + error.message);
-      setStatus('Gagal menyimpan file.');
+      setStatus('Proses Gagal! Pastikan IP benar dan Komputer menyala.');
+      setProgress(0);
     }
   };
 
+  const blobToBase64 = (blob) => { //[cite: 1]
+    return new Promise((resolve, reject) => { //[cite: 1]
+      const reader = new FileReader(); //[cite: 1]
+      reader.onloadend = () => { //[cite: 1]
+        if (typeof reader.result === 'string') { //[cite: 1]
+          resolve(reader.result.split(',')[1]); //[cite: 1]
+        } else { //[cite: 1]
+          reject(new Error("Format data tidak valid.")); //[cite: 1]
+        } //[cite: 1]
+      }; //[cite: 1]
+      reader.onerror = (err) => reject(err); //[cite: 1]
+      reader.readAsDataURL(blob); //[cite: 1]
+    }); //[cite: 1]
+  }; //[cite: 1]
+
+  const saveVideoToDevice = async () => { //[cite: 1]
+    if (!downloadInfo || !downloadInfo.blob) { //[cite: 1]
+      return alert('File video belum siap atau gagal diproses!'); //[cite: 1]
+    } //[cite: 1]
+
+    try { //[cite: 1]
+      setStatus('Meminta izin akses penyimpanan...'); //[cite: 1]
+      const permissionCheck = await Filesystem.checkPermissions(); //[cite: 1]
+      if (permissionCheck.publicStorage !== 'granted') { //[cite: 1]
+        const req = await Filesystem.requestPermissions(); //[cite: 1]
+        if (req.publicStorage !== 'granted') { //[cite: 1]
+          alert('Izin penyimpanan ditolak!'); //[cite: 1]
+          setStatus('Penyimpanan dibatalkan.'); //[cite: 1]
+          return; //[cite: 1]
+        } //[cite: 1]
+      } //[cite: 1]
+
+      setStatus('Mengonversi file video...'); //[cite: 1]
+      const base64Data = await blobToBase64(downloadInfo.blob); //[cite: 1]
+
+      setStatus('Menyimpan file ke Penyimpanan...'); //[cite: 1]
+      
+      await Filesystem.writeFile({ //[cite: 1]
+        path: downloadInfo.filename, //[cite: 1]
+        data: base64Data, //[cite: 1]
+        directory: Directory.Documents, //[cite: 1]
+        recursive: true //[cite: 1]
+      }); //[cite: 1]
+
+      alert(`BERHASIL! Video tersimpan di folder Documents HP Anda dengan nama: ${downloadInfo.filename}`); //[cite: 1]
+      setStatus('Video berhasil disimpan ke HP!'); //[cite: 1]
+
+    } catch (error) { //[cite: 1]
+      console.error(error); //[cite: 1]
+      alert('GAGAL MENYIMPAN: ' + error.message); //[cite: 1]
+      setStatus('Gagal menyimpan file.'); //[cite: 1]
+    } //[cite: 1]
+  }; //[cite: 1]
+
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '600px', margin: 'auto' }}>
-      <h2>🛠️ Metadata Video Editor Pro</h2>
+      <h2>🛠️ Metadata Video Editor (Server Mode)</h2>
       
       <div style={{ marginBottom: '15px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}>
-        <label><b>1. Pilih Video (Maks 5MB):</b></label><br/><br/>
+        <label><b>1. Pilih Video:</b></label><br/><br/>
         <input 
           type="file" 
           accept="video/mp4" 
-          onChange={(e) => {
-            setVideoFile(e.target.files[0]);
-            setOriginalMetadata('');
-            setDownloadInfo(null);
-            setProgress(0);
-            setProcessLogs([]);
+          onChange={(e) => { //[cite: 1]
+            setVideoFile(e.target.files[0]); //[cite: 1]
+            setDownloadInfo(null); //[cite: 1]
+            setProgress(0); //[cite: 1]
           }} 
         />
-        
-        <div style={{ marginTop: '15px' }}>
-          <button onClick={checkMetadata} style={{ padding: '8px 12px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
-            🔍 Cek Metadata Asli
-          </button>
-        </div>
-
-        {originalMetadata && (
-          <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#1e1e1e', color: '#00ff00', borderRadius: '5px', maxHeight: '150px', overflowY: 'auto', fontSize: '12px', fontFamily: 'monospace' }}>
-            <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{originalMetadata}</pre>
-          </div>
-        )}
       </div>
 
       <div style={{ marginBottom: '15px' }}>
@@ -280,26 +206,16 @@ function App() {
           <label><b>4. Perangkat (Model 2026):</b></label>
           <select value={deviceModel} onChange={(e) => setDeviceModel(e.target.value)} style={{ padding: '8px', width: '100%', marginTop: '5px' }}>
             <option value="Samsung Galaxy S26 Ultra">Samsung Galaxy S26 Ultra</option>
-            <option value="Samsung Galaxy S26+">Samsung Galaxy S26+</option>
-            <option value="Samsung Galaxy S26">Samsung Galaxy S26</option>
             <option value="Xiaomi 17 Ultra">Xiaomi 17 Ultra</option>
-            <option value="Xiaomi 17T">Xiaomi 17T</option>
             <option value="OPPO Find X9 Pro">OPPO Find X9 Pro</option>
-            <option value="OPPO Reno 15 Pro Max">OPPO Reno 15 Pro Max</option>
-            <option value="OPPO Reno 15 5G">OPPO Reno 15 5G</option>
             <option value="Vivo V80">Vivo V80</option>
-            <option value="Tecno Camon 30 Pro 5G">Tecno Camon 30 Pro 5G</option>
-            <option value="Redmi Turbo 5">Redmi Turbo 5</option>
-            <option value="Samsung Galaxy A57 5G">Samsung Galaxy A57 5G</option>
-            <option value="Samsung Galaxy Z Fold8 Ultra">Samsung Galaxy Z Fold8 Ultra</option>
-            <option value="Samsung Galaxy Z Flip8">Samsung Galaxy Z Flip8</option>
             <option value="OnePlus 15s">OnePlus 15s</option>
           </select>
         </div>
       </div>
 
-      <button onClick={processVideo} style={{ padding: '15px', width: '100%', backgroundColor: '#007BFF', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
-        ⚙️ Proses Video Sekarang
+      <button onClick={processVideoOnServer} style={{ padding: '15px', width: '100%', backgroundColor: '#007BFF', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
+        ⚙️ Kirim ke PC & Proses
       </button>
 
       <div style={{ marginTop: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f8f9fa' }}>
@@ -310,30 +226,22 @@ function App() {
         </div>
         <p style={{ margin: '0 0 10px 0', fontWeight: 'bold', textAlign: 'center' }}>{progress}%</p>
         
-        <p style={{ fontWeight: 'bold', color: status.includes('Gagal') ? 'red' : 'green' }}>
+        <p style={{ fontWeight: 'bold', color: status.includes('Gagal') ? 'red' : '#007BFF' }}>
           Status: {status}
         </p>
-
-        <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#1e1e1e', color: '#00ff00', borderRadius: '5px', height: '150px', overflowY: 'auto', fontSize: '11px', fontFamily: 'monospace' }}>
-          {processLogs.length === 0 ? (
-            <span style={{ color: '#888' }}>Menunggu proses dimulai...</span>
-          ) : (
-            processLogs.map((log, index) => <div key={index}>{log}</div>)
-          )}
-        </div>
       </div>
 
-      {downloadInfo && (
+      {downloadInfo && ( //[cite: 1]
         <button 
-          onClick={saveVideoToDevice}
-          style={{ marginTop: '15px', padding: '15px', width: '100%', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
+          onClick={saveVideoToDevice} //[cite: 1]
+          style={{ marginTop: '15px', padding: '15px', width: '100%', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }} //[cite: 1]
         >
           ⬇️ Simpan Video ke HP
-        </button>
+        </button> //[cite: 1]
       )}
 
     </div>
-  );
-}
+  ); //[cite: 1]
+} //[cite: 1]
 
-export default App;
+export default App; //[cite: 1]
