@@ -10,7 +10,6 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
 
-// Komponen Peta Otomatis
 const RecenterAutomatically = ({ lat, lng }) => {
   const map = useMap();
   useEffect(() => {
@@ -24,9 +23,8 @@ function App() {
   const [status, setStatus] = useState('Pilih video untuk memulai');
   const [audioScale, setAudioScale] = useState('0');
   const [deviceModel, setDeviceModel] = useState('iPhone 15 Pro Max');
-  const [location, setLocation] = useState({ lat: -0.7893, lng: 113.9213 }); // Default
+  const [location, setLocation] = useState({ lat: -0.7893, lng: 113.9213 });
   
-  // STATE BARU: Untuk Progres & Log
   const [progress, setProgress] = useState(0);
   const [processLogs, setProcessLogs] = useState([]);
   
@@ -35,19 +33,14 @@ function App() {
   
   const ffmpegRef = useRef(new FFmpeg());
 
-  // FITUR BARU: Minta Izin Otomatis Saat Aplikasi Pertama Dibuka
+  // Otomatis minta izin saat aplikasi pertama dibuka
   useEffect(() => {
     const requestStartupPermissions = async () => {
       try {
-        // Minta Izin Lokasi
-        let locPerm = await Geolocation.checkPermissions();
-        if (locPerm.location !== 'granted') await Geolocation.requestPermissions();
-        
-        // Minta Izin Penyimpanan
-        let filePerm = await Filesystem.checkPermissions();
-        if (filePerm.publicStorage !== 'granted') await Filesystem.requestPermissions();
+        await Geolocation.requestPermissions();
+        await Filesystem.requestPermissions();
       } catch (e) {
-        console.log('Izin ditolak atau tidak didukung di perangkat ini.', e);
+        console.log('Izin startup dilewati/ditolak:', e);
       }
     };
     requestStartupPermissions();
@@ -103,7 +96,6 @@ function App() {
   const processVideo = async () => {
     if (!videoFile) return alert('Pilih video dulu!');
     
-    // Reset state progres dan log
     setProgress(0);
     setProcessLogs([]);
     setDownloadInfo(null);
@@ -112,7 +104,6 @@ function App() {
     const ffmpeg = ffmpegRef.current;
     if (!ffmpeg.loaded) await ffmpeg.load();
 
-    // Dengarkan Progres dan Log FFmpeg
     ffmpeg.on('progress', ({ progress }) => {
       setProgress(Math.round(progress * 100));
     });
@@ -121,82 +112,107 @@ function App() {
       setProcessLogs((prevLogs) => [...prevLogs, message]);
     });
 
-    setStatus('Memproses video... Silakan pantau Terminal Log di bawah.');
+    setStatus('Memproses video & injeksi metadata...');
     const inputName = 'input.mp4';
     const outputName = 'output.mp4';
 
     await ffmpeg.writeFile(inputName, await fetchFile(videoFile));
 
-    let audioFilter = '';
-    if (audioScale === '1') audioFilter = '-af "chorus=0.5:0.9:50|60:0.4|0.32:0.25|0.4:2|2.3"';
-    if (audioScale === '2') audioFilter = '-af "vibrato=f=7.0:d=0.5, volume=1.5"';
-    if (audioScale === '3') audioFilter = '-af "acrusher=level_in=8:level_out=18:bits=8:mode=log, volume=2.0"';
-    if (audioScale === '4') audioFilter = '-af "aecho=0.8:0.88:60:0.4, acrusher=level_in=8:level_out=18:bits=4:mode=log, volume=3.0"';
+    // PERBAIKAN FATAL: Menghapus tanda petik ganda ekstra pada filter FFmpeg
+    let filterString = '';
+    if (audioScale === '1') filterString = 'chorus=0.5:0.9:50|60:0.4|0.32:0.25|0.4:2|2.3';
+    if (audioScale === '2') filterString = 'vibrato=f=7.0:d=0.5, volume=1.5';
+    if (audioScale === '3') filterString = 'acrusher=level_in=8:level_out=18:bits=8:mode=log, volume=2.0';
+    if (audioScale === '4') filterString = 'aecho=0.8:0.88:60:0.4, acrusher=level_in=8:level_out=18:bits=4:mode=log, volume=3.0';
 
     const command = [
       '-i', inputName,
       '-metadata', `creation_time=now`,
       '-metadata', `location=${location.lat}${location.lng > 0 ? '+' : ''}${location.lng}`,
       '-metadata', `location-eng=${location.lat}${location.lng > 0 ? '+' : ''}${location.lng}`,
-      '-metadata', `model="${deviceModel}"`,
-      '-metadata', `make="${deviceModel.split(' ')[0]}"`,
+      '-metadata', `model=${deviceModel}`,
+      '-metadata', `make=${deviceModel.split(' ')[0]}`,
     ];
 
-    if (audioScale !== '0') command.push('-af', audioFilter.replace('-af ', ''));
+    if (audioScale !== '0' && filterString !== '') {
+      command.push('-af', filterString);
+    }
+
     command.push(outputName);
 
     try {
       await ffmpeg.exec(command);
-      setStatus('Proses selesai! Menyiapkan file untuk disimpan...');
+      setStatus('Proses video selesai! Menyiapkan file...');
       
       const data = await ffmpeg.readFile(outputName);
+      if (!data || data.length === 0) {
+        throw new Error("File hasil olahan FFmpeg kosong.");
+      }
+
       const blob = new Blob([data.buffer], { type: 'video/mp4' });
       
       const date = new Date();
       const finalFileName = `Videos_${date.getDate()}_${date.getMonth() + 1}_${date.getFullYear()}_${date.getHours()}${date.getMinutes()}.mp4`;
 
       setDownloadInfo({ blob, filename: finalFileName });
-      setStatus('Video berhasil diproses! Silakan klik tombol Simpan ke DCIM.');
+      setStatus('Berhasil! Silakan klik tombol Simpan di bawah.');
     } catch (error) {
       setProcessLogs(prev => [...prev, `ERROR FATAL: ${error.message}`]);
-      setStatus('Proses Gagal! Lihat log untuk detail.');
+      setStatus('Proses Gagal! Periksa Log.');
     } finally {
-      // Bersihkan pendengar event agar tidak menumpuk di proses berikutnya
       ffmpeg.off('progress');
       ffmpeg.off('log');
     }
   };
 
-  // FUNGSI KONVERSI BLOB KE BASE64 (Dengan Try-Catch Anti-Stuck)
   const blobToBase64 = (blob) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result.split(',')[1]);
-      reader.onerror = () => reject(new Error("Gagal membaca memori file (File mungkin terlalu besar untuk RAM)"));
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result.split(',')[1]);
+        } else {
+          reject(new Error("Format data tidak valid."));
+        }
+      };
+      reader.onerror = (err) => reject(err);
       reader.readAsDataURL(blob);
     });
   };
 
-  // FITUR PENYIMPANAN KE DCIM
+  // PERBAIKAN: Penyimpanan native ke dokumen/DCIM perangkat
   const saveVideoToDevice = async () => {
-    if (!downloadInfo) return;
+    if (!downloadInfo || !downloadInfo.blob) {
+      return alert('File video belum siap atau gagal diproses!');
+    }
+
     try {
-      setStatus('Mengonversi file ke format Android... (Tunggu sebentar)');
-      
-      // Ambil Base64 dengan aman
+      setStatus('Meminta izin akses penyimpanan...');
+      const permissionCheck = await Filesystem.checkPermissions();
+      if (permissionCheck.publicStorage !== 'granted') {
+        const req = await Filesystem.requestPermissions();
+        if (req.publicStorage !== 'granted') {
+          alert('Izin penyimpanan ditolak!');
+          setStatus('Penyimpanan dibatalkan.');
+          return;
+        }
+      }
+
+      setStatus('Mengonversi file video...');
       const base64Data = await blobToBase64(downloadInfo.blob);
 
-      setStatus('Menyimpan file ke folder DCIM HP...');
+      setStatus('Menyimpan file ke Penyimpanan...');
       
-      // Simpan menggunakan Directory.ExternalStorage (Root perangkat) + Folder DCIM
+      // Menggunakan Directory.Documents untuk kompatibilitas penuh Android
       await Filesystem.writeFile({
-        path: `DCIM/${downloadInfo.filename}`, // Akan masuk ke Internal Storage/DCIM/
+        path: downloadInfo.filename,
         data: base64Data,
-        directory: Directory.ExternalStorage,
+        directory: Directory.Documents,
+        recursive: true
       });
 
-      alert(`Sukses! Video disimpan di Galeri / Folder DCIM dengan nama: ${downloadInfo.filename}`);
-      setStatus('Video berhasil disimpan!');
+      alert(`BERHASIL! Video tersimpan di folder Documents HP Anda dengan nama: ${downloadInfo.filename}`);
+      setStatus('Video berhasil disimpan ke HP!');
 
     } catch (error) {
       console.error(error);
@@ -209,9 +225,8 @@ function App() {
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '600px', margin: 'auto' }}>
       <h2>🛠️ Metadata Video Editor Pro</h2>
       
-      {/* 1. UPLOAD VIDEO */}
       <div style={{ marginBottom: '15px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}>
-        <label><b>1. Pilih Video:</b></label><br/><br/>
+        <label><b>1. Pilih Video (Maks 5MB):</b></label><br/><br/>
         <input 
           type="file" 
           accept="video/mp4" 
@@ -237,7 +252,6 @@ function App() {
         )}
       </div>
 
-      {/* 2. LOKASI */}
       <div style={{ marginBottom: '15px' }}>
         <label><b>2. Pilih Lokasi (GPS):</b></label><br/>
         <button onClick={getDeviceLocation} style={{ marginBottom: '10px', padding: '8px 12px', backgroundColor: '#17a2b8', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
@@ -252,7 +266,6 @@ function App() {
         <small>Lat: {location.lat.toFixed(6)}, Lng: {location.lng.toFixed(6)}</small>
       </div>
 
-      {/* 3. AUDIO & PERANGKAT */}
       <div style={{ marginBottom: '15px', display: 'flex', gap: '10px' }}>
         <div style={{ flex: 1 }}>
           <label><b>3. Audio:</b></label>
@@ -275,16 +288,13 @@ function App() {
         </div>
       </div>
 
-      {/* TOMBOL PROSES */}
       <button onClick={processVideo} style={{ padding: '15px', width: '100%', backgroundColor: '#007BFF', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
         ⚙️ Proses Video Sekarang
       </button>
 
-      {/* INDIKATOR PROGRES & LOG TERMINAL */}
       <div style={{ marginTop: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f8f9fa' }}>
         <h4 style={{ margin: '0 0 10px 0' }}>Progres Proses:</h4>
         
-        {/* Progress Bar */}
         <div style={{ width: '100%', backgroundColor: '#e9ecef', borderRadius: '5px', overflow: 'hidden', height: '20px', marginBottom: '10px' }}>
           <div style={{ height: '100%', backgroundColor: '#28a745', width: `${progress}%`, transition: 'width 0.3s' }}></div>
         </div>
@@ -294,7 +304,6 @@ function App() {
           Status: {status}
         </p>
 
-        {/* Terminal Log */}
         <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#1e1e1e', color: '#00ff00', borderRadius: '5px', height: '150px', overflowY: 'auto', fontSize: '11px', fontFamily: 'monospace' }}>
           {processLogs.length === 0 ? (
             <span style={{ color: '#888' }}>Menunggu proses dimulai...</span>
@@ -304,13 +313,12 @@ function App() {
         </div>
       </div>
 
-      {/* TOMBOL PENYIMPANAN NATIVE */}
       {downloadInfo && (
         <button 
           onClick={saveVideoToDevice}
           style={{ marginTop: '15px', padding: '15px', width: '100%', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
         >
-          ⬇️ Simpan Video ke Folder DCIM
+          ⬇️ Simpan Video ke HP
         </button>
       )}
 
