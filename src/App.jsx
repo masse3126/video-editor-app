@@ -10,7 +10,7 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
 
-// Komponen untuk menggeser peta secara otomatis
+// Komponen Peta Otomatis
 const RecenterAutomatically = ({ lat, lng }) => {
   const map = useMap();
   useEffect(() => {
@@ -24,12 +24,34 @@ function App() {
   const [status, setStatus] = useState('Pilih video untuk memulai');
   const [audioScale, setAudioScale] = useState('0');
   const [deviceModel, setDeviceModel] = useState('iPhone 15 Pro Max');
-  const [location, setLocation] = useState({ lat: -0.7893, lng: 113.9213 }); // Default Indonesia
+  const [location, setLocation] = useState({ lat: -0.7893, lng: 113.9213 }); // Default
+  
+  // STATE BARU: Untuk Progres & Log
+  const [progress, setProgress] = useState(0);
+  const [processLogs, setProcessLogs] = useState([]);
   
   const [originalMetadata, setOriginalMetadata] = useState('');
   const [downloadInfo, setDownloadInfo] = useState(null);
   
   const ffmpegRef = useRef(new FFmpeg());
+
+  // FITUR BARU: Minta Izin Otomatis Saat Aplikasi Pertama Dibuka
+  useEffect(() => {
+    const requestStartupPermissions = async () => {
+      try {
+        // Minta Izin Lokasi
+        let locPerm = await Geolocation.checkPermissions();
+        if (locPerm.location !== 'granted') await Geolocation.requestPermissions();
+        
+        // Minta Izin Penyimpanan
+        let filePerm = await Filesystem.checkPermissions();
+        if (filePerm.publicStorage !== 'granted') await Filesystem.requestPermissions();
+      } catch (e) {
+        console.log('Izin ditolak atau tidak didukung di perangkat ini.', e);
+      }
+    };
+    requestStartupPermissions();
+  }, []);
 
   const LocationPicker = () => {
     useMapEvents({
@@ -40,27 +62,18 @@ function App() {
     return location ? <Marker position={[location.lat, location.lng]} /> : null;
   };
 
-  // FITUR LOKASI MENGGUNAKAN CAPACITOR (Native Android)
   const getDeviceLocation = async () => {
     try {
-      setStatus('Meminta izin lokasi perangkat...');
-      
-      const permissions = await Geolocation.checkPermissions();
-      if (permissions.location !== 'granted') {
-        await Geolocation.requestPermissions();
-      }
-
+      setStatus('Mengambil lokasi perangkat...');
       const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true });
       setLocation({
         lat: position.coords.latitude,
         lng: position.coords.longitude
       });
       setStatus('Lokasi perangkat berhasil didapatkan!');
-      
     } catch (error) {
-      alert('Gagal mendapatkan lokasi. Pastikan GPS aktif dan izin diberikan.');
+      alert('Gagal mendapatkan lokasi. Pastikan GPS aktif.');
       setStatus('Gagal mengakses GPS.');
-      console.error(error);
     }
   };
 
@@ -77,26 +90,38 @@ function App() {
     await ffmpeg.writeFile(inputName, await fetchFile(videoFile));
 
     let logs = [];
-    const logCallback = ({ message }) => logs.push(message);
+    const logCb = ({ message }) => logs.push(message);
 
-    ffmpeg.on('log', logCallback);
+    ffmpeg.on('log', logCb);
     await ffmpeg.exec(['-i', inputName]);
-    ffmpeg.off('log', logCallback);
+    ffmpeg.off('log', logCb);
 
-    const logString = logs.join('\n');
-    setOriginalMetadata(logString || 'Metadata tidak ditemukan.');
+    setOriginalMetadata(logs.join('\n') || 'Metadata tidak ditemukan.');
     setStatus('Selesai mengekstrak metadata!');
   };
 
   const processVideo = async () => {
     if (!videoFile) return alert('Pilih video dulu!');
-    setStatus('Memuat mesin pemroses (FFmpeg)...');
+    
+    // Reset state progres dan log
+    setProgress(0);
+    setProcessLogs([]);
     setDownloadInfo(null);
+    setStatus('Memuat mesin pemroses (FFmpeg)...');
     
     const ffmpeg = ffmpegRef.current;
     if (!ffmpeg.loaded) await ffmpeg.load();
 
-    setStatus('Memproses video... (Harap bersabar, ini memakan waktu)');
+    // Dengarkan Progres dan Log FFmpeg
+    ffmpeg.on('progress', ({ progress }) => {
+      setProgress(Math.round(progress * 100));
+    });
+    
+    ffmpeg.on('log', ({ message }) => {
+      setProcessLogs((prevLogs) => [...prevLogs, message]);
+    });
+
+    setStatus('Memproses video... Silakan pantau Terminal Log di bawah.');
     const inputName = 'input.mp4';
     const outputName = 'output.mp4';
 
@@ -120,63 +145,62 @@ function App() {
     if (audioScale !== '0') command.push('-af', audioFilter.replace('-af ', ''));
     command.push(outputName);
 
-    await ffmpeg.exec(command);
-    setStatus('Proses selesai! Menyiapkan file unduhan...');
-    
-    const data = await ffmpeg.readFile(outputName);
-    const blob = new Blob([data.buffer], { type: 'video/mp4' });
-    
-    const date = new Date();
-    const finalFileName = `Videos_${date.getDate()}_${date.getMonth() + 1}_${date.getFullYear()}_${date.getHours()}${date.getMinutes()}.mp4`;
+    try {
+      await ffmpeg.exec(command);
+      setStatus('Proses selesai! Menyiapkan file untuk disimpan...');
+      
+      const data = await ffmpeg.readFile(outputName);
+      const blob = new Blob([data.buffer], { type: 'video/mp4' });
+      
+      const date = new Date();
+      const finalFileName = `Videos_${date.getDate()}_${date.getMonth() + 1}_${date.getFullYear()}_${date.getHours()}${date.getMinutes()}.mp4`;
 
-    setDownloadInfo({ blob, filename: finalFileName });
-    setStatus('Video berhasil diproses! Silakan klik tombol Simpan di bawah.');
+      setDownloadInfo({ blob, filename: finalFileName });
+      setStatus('Video berhasil diproses! Silakan klik tombol Simpan ke DCIM.');
+    } catch (error) {
+      setProcessLogs(prev => [...prev, `ERROR FATAL: ${error.message}`]);
+      setStatus('Proses Gagal! Lihat log untuk detail.');
+    } finally {
+      // Bersihkan pendengar event agar tidak menumpuk di proses berikutnya
+      ffmpeg.off('progress');
+      ffmpeg.off('log');
+    }
   };
 
-  // FITUR PENYIMPANAN YANG SUDAH DIPERBAIKI (Minta Izin Pop-Up)
+  // FUNGSI KONVERSI BLOB KE BASE64 (Dengan Try-Catch Anti-Stuck)
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = () => reject(new Error("Gagal membaca memori file (File mungkin terlalu besar untuk RAM)"));
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // FITUR PENYIMPANAN KE DCIM
   const saveVideoToDevice = async () => {
     if (!downloadInfo) return;
     try {
-      setStatus('Memeriksa izin penyimpanan...');
+      setStatus('Mengonversi file ke format Android... (Tunggu sebentar)');
       
-      // 1. Memanggil Pop-Up Izin Penyimpanan
-      const permissions = await Filesystem.checkPermissions();
-      if (permissions.publicStorage !== 'granted') {
-        const request = await Filesystem.requestPermissions();
-        if (request.publicStorage !== 'granted') {
-          alert('Izin penyimpanan ditolak! Aplikasi tidak bisa menyimpan video.');
-          setStatus('Gagal: Izin penyimpanan tidak diberikan.');
-          return;
-        }
-      }
+      // Ambil Base64 dengan aman
+      const base64Data = await blobToBase64(downloadInfo.blob);
 
-      setStatus('Sedang menyimpan file ke Dokumen HP...');
+      setStatus('Menyimpan file ke folder DCIM HP...');
       
-      const reader = new FileReader();
-      reader.readAsDataURL(downloadInfo.blob);
-      
-      reader.onloadend = async () => {
-        const base64Data = reader.result.split(',')[1];
+      // Simpan menggunakan Directory.ExternalStorage (Root perangkat) + Folder DCIM
+      await Filesystem.writeFile({
+        path: `DCIM/${downloadInfo.filename}`, // Akan masuk ke Internal Storage/DCIM/
+        data: base64Data,
+        directory: Directory.ExternalStorage,
+      });
 
-        // 2. Menyimpan File ke direktori Documents
-        await Filesystem.writeFile({
-          path: downloadInfo.filename,
-          data: base64Data,
-          directory: Directory.Documents,
-        });
-
-        alert(`Sukses! Video berhasil disimpan di folder Documents / Dokumen HP Anda dengan nama: ${downloadInfo.filename}`);
-        setStatus('Video berhasil disimpan di memori HP!');
-      };
-
-      reader.onerror = () => {
-        alert('Terjadi kesalahan saat membaca file.');
-        setStatus('Gagal memproses file.');
-      };
+      alert(`Sukses! Video disimpan di Galeri / Folder DCIM dengan nama: ${downloadInfo.filename}`);
+      setStatus('Video berhasil disimpan!');
 
     } catch (error) {
       console.error(error);
-      alert('Terjadi kesalahan sistem saat menyimpan file: ' + error.message);
+      alert('GAGAL MENYIMPAN: ' + error.message);
       setStatus('Gagal menyimpan file.');
     }
   };
@@ -195,6 +219,8 @@ function App() {
             setVideoFile(e.target.files[0]);
             setOriginalMetadata('');
             setDownloadInfo(null);
+            setProgress(0);
+            setProcessLogs([]);
           }} 
         />
         
@@ -205,16 +231,15 @@ function App() {
         </div>
 
         {originalMetadata && (
-          <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#1e1e1e', color: '#00ff00', borderRadius: '5px', maxHeight: '200px', overflowY: 'auto', fontSize: '12px', fontFamily: 'monospace' }}>
+          <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#1e1e1e', color: '#00ff00', borderRadius: '5px', maxHeight: '150px', overflowY: 'auto', fontSize: '12px', fontFamily: 'monospace' }}>
             <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{originalMetadata}</pre>
           </div>
         )}
       </div>
 
-      {/* 2. LOKASI DENGAN IZIN GPS */}
+      {/* 2. LOKASI */}
       <div style={{ marginBottom: '15px' }}>
         <label><b>2. Pilih Lokasi (GPS):</b></label><br/>
-        
         <button onClick={getDeviceLocation} style={{ marginBottom: '10px', padding: '8px 12px', backgroundColor: '#17a2b8', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
           📍 Gunakan Lokasi Ponsel Saya
         </button>
@@ -227,27 +252,27 @@ function App() {
         <small>Lat: {location.lat.toFixed(6)}, Lng: {location.lng.toFixed(6)}</small>
       </div>
 
-      {/* 3. AUDIO */}
-      <div style={{ marginBottom: '15px' }}>
-        <label><b>3. Perusak Audio:</b></label><br/>
-        <select value={audioScale} onChange={(e) => setAudioScale(e.target.value)} style={{ padding: '8px', width: '100%', marginTop: '5px' }}>
-          <option value="0">Original (Tidak Rusak)</option>
-          <option value="1">Skala 1 (Bergema)</option>
-          <option value="2">Skala 2 (Distorsi Sedang)</option>
-          <option value="3">Skala 3 (Rusak Kasar / Glitch)</option>
-          <option value="4">Skala 4 (Rusak Parah / Noise Telinga Berdarah)</option>
-        </select>
-      </div>
-
-      {/* 4. PERANGKAT */}
-      <div style={{ marginBottom: '20px' }}>
-        <label><b>4. Ganti Metadata Perangkat:</b></label><br/>
-        <select value={deviceModel} onChange={(e) => setDeviceModel(e.target.value)} style={{ padding: '8px', width: '100%', marginTop: '5px' }}>
-          <option value="iPhone 15 Pro Max">iPhone 15 Pro Max</option>
-          <option value="iPhone 14 Pro">iPhone 14 Pro</option>
-          <option value="Samsung Galaxy S24 Ultra">Samsung Galaxy S24 Ultra</option>
-          <option value="Xiaomi 14 Pro">Xiaomi 14 Pro</option>
-        </select>
+      {/* 3. AUDIO & PERANGKAT */}
+      <div style={{ marginBottom: '15px', display: 'flex', gap: '10px' }}>
+        <div style={{ flex: 1 }}>
+          <label><b>3. Audio:</b></label>
+          <select value={audioScale} onChange={(e) => setAudioScale(e.target.value)} style={{ padding: '8px', width: '100%', marginTop: '5px' }}>
+            <option value="0">Original</option>
+            <option value="1">Skala 1 (Gema)</option>
+            <option value="2">Skala 2 (Distorsi)</option>
+            <option value="3">Skala 3 (Glitch)</option>
+            <option value="4">Skala 4 (Noise)</option>
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <label><b>4. Perangkat:</b></label>
+          <select value={deviceModel} onChange={(e) => setDeviceModel(e.target.value)} style={{ padding: '8px', width: '100%', marginTop: '5px' }}>
+            <option value="iPhone 15 Pro Max">iPhone 15 Pro Max</option>
+            <option value="iPhone 14 Pro">iPhone 14 Pro</option>
+            <option value="Samsung Galaxy S24 Ultra">S24 Ultra</option>
+            <option value="Xiaomi 14 Pro">Xiaomi 14 Pro</option>
+          </select>
+        </div>
       </div>
 
       {/* TOMBOL PROSES */}
@@ -255,17 +280,37 @@ function App() {
         ⚙️ Proses Video Sekarang
       </button>
 
-      <p style={{ marginTop: '15px', fontWeight: 'bold', color: status.includes('Selesai') || status.includes('berhasil') ? 'green' : '#333' }}>
-        Status: {status}
-      </p>
+      {/* INDIKATOR PROGRES & LOG TERMINAL */}
+      <div style={{ marginTop: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f8f9fa' }}>
+        <h4 style={{ margin: '0 0 10px 0' }}>Progres Proses:</h4>
+        
+        {/* Progress Bar */}
+        <div style={{ width: '100%', backgroundColor: '#e9ecef', borderRadius: '5px', overflow: 'hidden', height: '20px', marginBottom: '10px' }}>
+          <div style={{ height: '100%', backgroundColor: '#28a745', width: `${progress}%`, transition: 'width 0.3s' }}></div>
+        </div>
+        <p style={{ margin: '0 0 10px 0', fontWeight: 'bold', textAlign: 'center' }}>{progress}%</p>
+        
+        <p style={{ fontWeight: 'bold', color: status.includes('Gagal') ? 'red' : 'green' }}>
+          Status: {status}
+        </p>
+
+        {/* Terminal Log */}
+        <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#1e1e1e', color: '#00ff00', borderRadius: '5px', height: '150px', overflowY: 'auto', fontSize: '11px', fontFamily: 'monospace' }}>
+          {processLogs.length === 0 ? (
+            <span style={{ color: '#888' }}>Menunggu proses dimulai...</span>
+          ) : (
+            processLogs.map((log, index) => <div key={index}>{log}</div>)
+          )}
+        </div>
+      </div>
 
       {/* TOMBOL PENYIMPANAN NATIVE */}
       {downloadInfo && (
         <button 
           onClick={saveVideoToDevice}
-          style={{ padding: '15px', width: '100%', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
+          style={{ marginTop: '15px', padding: '15px', width: '100%', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
         >
-          ⬇️ Simpan Video ke Dokumen HP
+          ⬇️ Simpan Video ke Folder DCIM
         </button>
       )}
 
